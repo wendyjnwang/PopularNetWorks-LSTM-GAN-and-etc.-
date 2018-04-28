@@ -144,12 +144,18 @@ class CaptioningRNN(object):
         ############################################################################
         h0, cache_h0 = affine_forward(features, W_proj, b_proj)       
         x, cache_emb = word_embedding_forward(captions_in, W_embed)
-        h, cache_h = rnn_forward(x, h0, Wx, Wh, b)
+        if self.cell_type == 'rnn':
+            h, rnn_cache = rnn_forward(x, h0, Wx, Wh, b)
+        elif self.cell_type == 'lstm':
+            h, lstm_cache = lstm_forward(x, h0, Wx, Wh, b)
         out, cache_out = temporal_affine_forward(h, W_vocab, b_vocab)
         loss, dout = temporal_softmax_loss(out, captions_out, mask, verbose=False)
         dout = dout.reshape(-1, vocab_size)   # (N x T, V)
         dh, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dout, cache_out)
-        dx, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh, cache_h)
+        if self.cell_type == 'rnn':
+            dx, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh, rnn_cache)
+        elif self.cell_type == 'lstm':
+            dx, dh0, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dh, lstm_cache)
         grads['W_embed'] =  word_embedding_backward(dx, cache_emb)       
         _, grads['W_proj'], grads['b_proj'] = affine_backward(dh0, cache_h0)
     
@@ -220,6 +226,7 @@ class CaptioningRNN(object):
         # a loop.                                                                 #
         ###########################################################################
         h, _ = affine_forward(features, W_proj, b_proj)
+        c = np.zeros_like(h)
         c = 0
     
         for t in range(max_length):
@@ -232,7 +239,8 @@ class CaptioningRNN(object):
             # (2) RNN step or LSTM step
             if self.cell_type == 'rnn':
                 h, _ = rnn_step_forward(word_vec.reshape(-1, wordvec_dim), h, Wx, Wh, b)  
-      
+            elif self.cell_type == 'lstm':
+                h, c, _ = lstm_step_forward(word_vec.reshape(-1, wordvec_dim), h, c, Wx, Wh, b)   
             # (3) get socres for all words in the vocab
             out, _ = affine_forward(h, W_vocab, b_vocab)     # (N, V)
 
